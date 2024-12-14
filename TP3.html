@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <title>Evolution de déchets en France entre 2009 et 2021</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #slider-container {
+            margin: 20px;
+            text-align: center;
+        }
+        #tooltip {
+            position: absolute;
+            background-color: white;
+            border: 1px solid #ccc;
+            padding: 8px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+    </style>
+</head>
+<body>
+    <center><h1 id="title">Evolution de déchets en France</h1></center>
+
+    <!-- Conteneur pour l'année, le slider et la valeur -->
+    <div id="slider-container">
+        <span id="slider-label">Année :</span>
+        <input type="range" id="year-slider" />
+        <span id="selected-year"></span>
+    </div>
+
+    <script>
+        var width = 700,
+            height = 580;
+
+        var svg = d3
+            .select("body")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height);
+
+        // On rajoute un groupe englobant toute la visualisation pour plus tard
+        var g = svg.append("g");
+
+        // Projection pour la carte de France
+        var projection = d3
+            .geoConicConformal()
+            .center([2.454071, 46.279229])
+            .translate([width / 2, height / 2])
+            .scale(2800);
+
+        // Définir une échelle de couleur
+        var color = d3
+            .scaleQuantize()
+            .range(["#edf8e9", "#bae4b3", "#74c476", "#31a354", "#006d2c"]);
+
+        var path = d3.geoPath().projection(projection);
+        
+        // Label de l'année sélectionnée
+        var yearLabel = d3.select("#selected-year");
+
+        var cleanData; // Stocker les données filtrées
+
+        // Chargement des données
+        d3.csv("https://www.data.gouv.fr/fr/datasets/r/ddfb258b-49df-4789-90e4-864207dd0eb8").then(function (data) {
+            // Filtrer les données pour ne garder que celles où L_TYP_REG_DECHET === "DEEE"
+            cleanData = data.filter(function (d) {
+                return d.L_TYP_REG_DECHET === "DEEE";
+            });
+
+            // Trouver les années min et max
+            const minYear = d3.min(cleanData, (d) => parseInt(d.ANNEE));
+            const maxYear = d3.max(cleanData, (d) => parseInt(d.ANNEE));
+
+            // Configurer la plage de couleurs pour les valeurs
+            color.domain([
+            d3.min(cleanData, (d) => parseInt(d.TONNAGE_T)),
+            d3.max(cleanData, (d) => parseInt(d.TONNAGE_T)),
+        ]);
+
+            // Configurer le slider
+            var slider = d3.select("#year-slider")
+                .attr("min", minYear)
+                .attr("max", maxYear)
+                .attr("step", 1)
+                .attr("value", minYear);
+
+            d3.select("#selected-year").text(minYear);
+
+            // Charger le GeoJSON
+            d3.json("https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements-version-simplifiee.geojson").then(function (json) {
+                // Fonction pour mettre à jour la carte
+                function updateMap(annéeChoisie) {
+                    for (var j = 0; j < json.features.length; j++) {
+                        var departement = json.features[j];
+
+                        // Trouver les données correspondantes pour l'année choisie et ce département
+                        var anneeDepChoisi = cleanData.find(function (row) {
+                            return row.N_DEPT == departement.properties.nom && row.ANNEE == annéeChoisie;
+                        });
+
+                        // Ajouter la valeur "TONNAGE_T" au département
+                        departement.properties.value = anneeDepChoisi ? parseFloat(anneeDepChoisi.TONNAGE_T) : null;
+                    }
+
+                    // Dessiner la carte
+                    svg.selectAll("path")
+                        .data(json.features)
+                        .join("path")
+                        .attr("d", path)
+                        .style("fill", function (d) {
+                            var value = d.properties.value;
+                            return value ? color(value) : "#ccc"; // Couleur grise si pas de données
+                        })
+                        .on("mouseover", function (event, d) {
+                            // Récupérer la valeur
+                            var value = d.properties.value;
+
+                            // Ajouter un tooltip
+                            d3.select("body")
+                                .append("div")
+                                .attr("id", "tooltip")
+                                .html(
+                                    `<strong>${d.properties.nom}</strong>: ${
+                                        value ? value + " tonnes" : "Pas de données"
+                                    }`
+                                )
+                                .style("left", `${event.pageX + 10}px`)
+                                .style("top", `${event.pageY + 10}px`)
+                                .style("opacity", 1);
+                        })
+                        .on("mousemove", function (event) {
+                            d3.select("#tooltip")
+                                .style("left", `${event.pageX + 10}px`)
+                                .style("top", `${event.pageY + 10}px`);
+                        })
+                        .on("mouseout", function () {
+                            d3.select("#tooltip").remove();
+                        });
+                }
+
+                // Initialisation de la carte
+                updateMap(minYear);
+                slider.on("input", function () {
+                const annéeChoisie = this.value;
+                d3.select("#selected-year").text(annéeChoisie);
+                updateMap(annéeChoisie);
+                });
+                
+            });
+        });
+    </script>
+</body>
+</html>
