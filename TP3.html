@@ -139,6 +139,9 @@
                                 .style("left", `${event.pageX + 10}px`)
                                 .style("top", `${event.pageY + 10}px`)
                                 .style("opacity", 1);
+                                d3.select(this).style("stroke", "#44623B").style("stroke-width", 1);
+
+
                         })
                         .on("mousemove", function (event) {
                             d3.select("#tooltip")
@@ -147,6 +150,8 @@
                         })
                         .on("mouseout", function () {
                             d3.select("#tooltip").remove();
+                            d3.select(this).style("stroke", "none");
+
                         });
                 }
 
